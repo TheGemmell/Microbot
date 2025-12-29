@@ -49,6 +49,63 @@ plugins {
     id("net.runelite.runelite-gradle-plugin.assemble")
     id("net.runelite.runelite-gradle-plugin.index")
     id("net.runelite.runelite-gradle-plugin.jarsign")
+
+}
+
+tasks.register<JavaExec>("runDebug") {
+    group = "application"
+    description = "Run RuneLite client with JDWP debug"
+
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("net.runelite.client.RuneLite")
+
+    // same JVM args you need normally
+    jvmArgs(
+        "-Dfile.encoding=UTF-8",
+        // JDWP agent for debugger
+        "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005"
+    )
+}
+
+tasks.register<Test>("runDebugTests") {
+    group = "verification"
+    description = "Run tests with JDWP debug on port 5005 (attach debugger before tests run)"
+
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+
+    jvmArgs(
+        "-Dfile.encoding=UTF-8",
+        "-Duser.timezone=Europe/Brussels",
+        "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005"
+    )
+
+    useJUnit()
+
+    testLogging {
+        events("passed", "skipped", "failed")
+        showStandardStreams = true
+    }
+}
+
+tasks.register<Test>("runTests") {
+    group = "verification"
+    description = "Run tests with proper timezone (no debug)"
+
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+
+    jvmArgs(
+        "-Dfile.encoding=UTF-8",
+        "-Duser.timezone=Europe/Brussels"
+    )
+
+    useJUnit()
+
+    testLogging {
+        events("passed", "skipped", "failed")
+        showStandardStreams = true
+    }
 }
 
 lombok.version = libs.versions.lombok.get()
@@ -72,6 +129,7 @@ dependencies {
         exclude("org.slf4j", "slf4j-api")
     }
     api(libs.jopt)
+    implementation(libs.fastutil)
     api(libs.guava) {
         exclude("com.google.code.findbugs", "jsr305")
         exclude("com.google.errorprone", "error_prone_annotations")
@@ -82,6 +140,7 @@ dependencies {
         exclude("com.google.guava", "guava")
     }
     api(libs.gson)
+    implementation(libs.jackson.databind)
     api(libs.flatlaf.core)
     implementation(libs.flatlaf.extras)
     api(libs.commons.text)
