@@ -1,95 +1,44 @@
-# Microbot Agent Guide
+# Microbot Project Notes (for Codex)
 
-Guidance for AI agents building Microbot scripts with the new `microbot/api` queryable layer.
+## Microbot at a Glance
+Microbot is a RuneLite-based Old School RuneScape client fork with an always-on hidden plugin that hosts automation scripts. It packages a shaded client for end users and keeps developer ergonomics via Queryable caches and script helpers under `microbot/util`. The build mirrors upstream RuneLite as a composite Gradle setup.
 
-## Scope & Paths
-- Primary plugin code: `runelite-client/src/main/java/net/runelite/client/plugins/microbot`.
-- Queryable API docs: `.../microbot/api/QUERYABLE_API.md`; quick read: `api/README.md`.
-- Keep new scripts inside the microbot plugin; share helpers under `microbot/util`.
+## Tech Stack
+- Java target 11 (develop/run with JDK 17+), Gradle wrapper, composite builds (`cache`, `runelite-api`, `runelite-client`, `runelite-gradle-plugin`, `runelite-jshell`).
+- RuneLite client + plugin APIs, LWJGL, Guice, Lombok, OkHttp, Gson, Logback/SLF4J.
+- CI helper `ci/build.sh` bootstraps `glslang` then runs `./gradlew :buildAll`.
 
-## Build & Test
-- Fast build: `mvn -pl runelite-client -am package` (jar in `runelite-client/target/`).
-- Unit tests: `mvn -pl runelite-client test`.
-- CI parity: `./ci/build.sh` (runs `mvn verify --settings ci/settings.xml`).
+## Repo Map
+- `runelite-client/` – Main client (`:client`) containing the Microbot plugin and shaded jar assembly.
+- `runelite-api/` – RuneLite API included build consumed by the client.
+- `runelite-gradle-plugin/` – Gradle plugins for assemble/index/jarsign tasks.
+- `runelite-jshell/` – JShell support artifacts.
+- `cache/` – Cache tools/build used by RuneLite.
+- `docs/` – User/dev docs and static site assets.
+- `config/` – Shared Checkstyle configuration.
+- `ci/` – CI build helper script.
 
-## Style Rules
-- Java 11 target, tabs for indentation, braces match `MicrobotPlugin.java`, prefer <120 chars/line.
-- Name types in UpperCamelCase, members in lowerCamelCase; configs prefixed with plugin name (e.g., `ExampleConfig`).
+## How to Validate Changes
+- Fast sanity: `./gradlew :client:compileJava`
+- Full build (all included builds): `./gradlew buildAll`
+- Assemble shaded client: `./gradlew :client:assemble` (creates `runelite-client/build/libs/*-shaded.jar` and `microbot-<version>.jar`)
+- Tests are disabled by default via Gradle config; enable/selectively run if you add tests (`./gradlew :client:runTests` or `runDebugTests`).
 
-## Script Pattern
-Pair a RuneLite `Plugin` with a `Script` that runs on a background thread; never sleep on the client thread.
+## Non-Negotiable Rules
+- Never instantiate caches or queryables directly; always use `Microbot.getRs2XxxCache().query()` or `.getStream()` (see `runelite-client/src/main/java/net/runelite/client/plugins/microbot/api/QUERYABLE_API.md`).
+- Do not block or sleep on the RuneLite client thread; long work belongs on script/executor threads.
+- Keep logging minimal; avoid PII/session identifiers and respect existing log levels/patterns.
+- Preserve the hidden/always-on nature of `MicrobotPlugin` and its config panel wiring.
+- Follow Checkstyle/Lombok patterns already in the codebase; do not downgrade security (e.g., telemetry token handling, HTTP clients) without discussion.
 
-```java
-@PluginDescriptor(name = "Gathering Demo")
-public class GatheringPlugin extends Plugin {
-	@Inject private GatheringScript script;
-	@Override protected void startUp() { script.run(); }
-	@Override protected void shutDown() { script.shutdown(); }
-}
+## Review Guidelines
+- P0: Anything that can crash the client, block the client thread, break world hopping/login, corrupt cache/queryable invariants, or expose credentials/telemetry tokens.
+- P1: Regressions to script loop timing, overlay correctness, plugin discovery/config panels, packaging (shaded jar/version props), or build reproducibility.
+- Check threading (client vs script), cache access patterns, Gradle task wiring, and error handling around network calls.
 
-@Slf4j
-public class GatheringScript extends Script {
-	@Override
-	public boolean run() {
-		mainScheduledFuture = scheduledExecutorService.scheduleWithFixedDelay(() -> {
-			try {
-				if (!Microbot.isLoggedIn() || !super.run()) return;
+## When Unsure
+- Start with `docs/ARCHITECTURE.md` and `docs/decisions/` for background.
+- API and script usage: `runelite-client/src/main/java/net/runelite/client/plugins/microbot/api/README.md` and `QUERYABLE_API.md`.
+- Development/setup: `docs/development.md`; installation: `docs/installation.md`.
+- Still unclear? Ask in Discord (link in `README.md`) or leave TODO with assumption noted.
 
-				Rs2TileObjectModel tree = new Rs2TileObjectQueryable()
-					.withName("Tree")
-					.where(obj -> !Rs2Player.isAnimating())
-					.nearest();
-
-				if (tree != null) {
-					tree.click("Chop down");
-					sleepUntil(() -> Rs2Player.isAnimating(), 3000);
-				}
-			} catch (Exception e) {
-				log.error("Loop error", e);
-			}
-		}, 0, 600, TimeUnit.MILLISECONDS); // ~1 tick
-		return true;
-	}
-}
-```
-
-## Queryable API Cheatsheet
-- **NPCs**
-	```java
-	Rs2NpcModel banker = new Rs2NpcQueryable()
-		.withNames("Banker", "Bank clerk")
-		.where(npc -> !npc.isInteracting())
-		.nearest(15);
-	if (banker != null) banker.click("Bank");
-	```
-- **Ground items**
-	```java
-	Rs2TileItemModel loot = new Rs2TileItemQueryable()
-		.where(Rs2TileItemModel::isLootAble)
-		.where(item -> item.getTotalGeValue() >= 3000)
-		.nearest(10);
-	if (loot != null) loot.pickup();
-	```
-- **Tile objects**
-	```java
-	Rs2TileObjectModel bankChest = new Rs2TileObjectQueryable()
-		.withNames("Bank chest", "Bank booth")
-		.nearest(20);
-	if (bankChest != null && !Rs2Bank.isOpen()) {
-		bankChest.click("Bank");
-		sleepUntil(Rs2Bank::isOpen, 5000);
-	}
-	```
-- **Players**
-	```java
-	Rs2PlayerModel ally = new Rs2PlayerQueryable()
-		.where(Rs2PlayerModel::isFriend)
-		.within(20)
-		.nearest();
-	```
-
-## Safety & Timing
-- Always guard logic with `Microbot.isLoggedIn()` and `super.run()`; bail early when paused.
-- Use `sleep`/`sleepUntil` only on script threads; wrap client access with `Microbot.getClientThread().runOnClientThread(...)` when needed.
-- Wait for state changes after interactions (`Rs2Bank.isOpen()`, `Rs2Player.isAnimating()`, inventory/bank counts).
-- Limit query radius with `.within(...)` to reduce overhead and cache results inside a loop when reused.

@@ -56,7 +56,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static net.runelite.api.widgets.ComponentID.BANK_INVENTORY_ITEM_CONTAINER;
-import static net.runelite.api.widgets.ComponentID.BANK_ITEM_CONTAINER;
+//import static net.runelite.api.widgets.ComponentID.BANK_ITEM_CONTAINER;
 import static net.runelite.client.plugins.microbot.util.Global.*;
 import static net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject.hoverOverObject;
 import static net.runelite.client.plugins.microbot.util.npc.Rs2Npc.hoverOverActor;
@@ -64,6 +64,11 @@ import static net.runelite.client.plugins.microbot.util.npc.Rs2Npc.hoverOverActo
 @SuppressWarnings("unused")
 @Slf4j
 public class Rs2Bank {
+    /**
+     * 12:12
+     */
+    public static final int BANK_ITEM_CONTAINER = 786444;
+
     public static final int BANK_ITEM_WIDTH = 36;
     public static final int BANK_ITEM_HEIGHT = 32;
     public static final int BANK_ITEM_Y_PADDING = 4;
@@ -162,7 +167,7 @@ public class Rs2Bank {
      */
 	public static boolean isOpen() {
 		if (!handleBankPin()) return false;
-		return Rs2Widget.hasWidgetText("Rearrange mode", 12, 18, false);
+		return Rs2Widget.isWidgetVisible(12, 1);
 	}
 
 	public static List<Rs2ItemModel> bankItems() {
@@ -1084,6 +1089,25 @@ public class Rs2Bank {
      */
     public static boolean depositAll(String name) {
         return depositAll(name, false);
+    }
+
+    /**
+     * Empty containers using the "Empty containers" button
+     * This button empties all containers like log baskets, herb sacks, etc. directly to the bank
+     *
+     * @return true if containers were emptied successfully, false otherwise
+     */
+    public static boolean emptyContainers() {
+        Microbot.status = "Empty containers";
+        if (!Rs2Bank.isOpen()) return false;
+
+        Widget widget = Rs2Widget.getWidget(786471); // Empty containers button ID
+        if (widget == null) return false;
+
+        Rs2Widget.clickWidget(widget);
+        sleep(1000, 2000); // Wait for containers to be emptied
+        
+        return true;
     }
 
     /**
@@ -2343,7 +2367,7 @@ public class Rs2Bank {
 
     public static boolean setWithdrawAs(boolean noted) {
         if (isWithdrawAs(noted)) return true;
-        int target = noted ? InterfaceID.Bankmain.NOTE : InterfaceID.Bankmain.ITEM;
+        int target = noted ? InterfaceID.Bankmain.NOTE : InterfaceID.Bankmain.QUANTITY1_TEXT;
         boolean clicked = Rs2Widget.clickWidget(target);
         if (!clicked) return false;
         return sleepUntil(() -> isWithdrawAs(noted));
